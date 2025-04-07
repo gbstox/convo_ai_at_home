@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Backend VAD Voice Chat</title>
+  <style>
+    #status { font-weight: bold; margin: 10px 0; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Backend VAD Voice Chat</h1>
+  <button id="startBtn">Start Conversation</button>
+  <p id="status">Idle</p>
+  <h2>Conversation:</h2>
+  <div id="conversation"></div>
+
+<script>
+const startBtn = document.getElementById('startBtn');
+const status = document.getElementById('status');
+const conversationDiv = document.getElementById('conversation');
+
+let ws;
+let audioContext;
+let started = false;
+
+let mediaSource;
+let sourceBuffer;
+let audioElement;
+let isReceivingAudio = false;
+
+function setStatus(text) {
+    status.innerText = text;
+    console.log("Status:", text);
+}
+
+function addToConversation(user, reply) {
+    const userP = document.createElement('p');
+    userP.innerHTML = `<strong>User:</strong> ${user}`;
+    conversationDiv.appendChild(userP);
+
+    const replyP = document.createElement('p');
+    replyP.innerHTML = `<strong>Assistant:</strong> ${reply}`;
+    conversationDiv.appendChild(replyP);
+}
+
+function initMediaSource() {
+    if (audioElement) {
+        audioElement.pause();
+        audioElement.src = '';
+    }
+    mediaSource = new MediaSource();
+    audioElement = new Audio();
+    audioElement.src = URL.createObjectURL(mediaSource);
+    audioElement.play().catch(e => console.log("play() error:", e));
+
+    mediaSource.addEventListener('sourceopen', () => {
+        sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+        sourceBuffer.mode = 'sequence';
+        sourceBuffer.addEventListener('error', e => console.error('SourceBuffer error', e));
+    });
+}
+
+async function startConversation() {
+    if (started) return;
+    started = true;
+    setStatus("Connecting...");
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+        setStatus("Connected. Listening...");
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            const sourceNode = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+            sourceNode.connect(processor);
+            processor.connect(audioContext.destination);
+
+            processor.onaudioprocess = e => {
+                const input = e.inputBuffer.getChannelData(0);
+                const sampleRateRatio = audioContext.sampleRate / 16000;
+                const newLength = Math.round(input.length / sampleRateRatio);
+                const downsampled = new Float32Array(newLength);
+                let offsetResult = 0, offsetBuffer = 0;
+                while (offsetResult < downsampled.length) {
+                    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+                    let accum = 0, count = 0;
+                    for (let i = offsetBuffer; i < nextOffsetBuffer && i < input.length; i++) {
+                        accum += input[i];
+                        count++;
+                    }
+                    downsampled[offsetResult] = accum / count;
+                    offsetResult++;
+                    offsetBuffer = nextOffsetBuffer;
+                }
+                const int16 = new Int16Array(downsampled.length);
+                for (let i = 0; i < downsampled.length; i++) {
+                    int16[i] = Math.max(-1, Math.min(1, downsampled[i])) * 32767;
+                }
+                ws.send(new Uint8Array(int16.buffer));
+            };
+        });
+    };
+
+    ws.onmessage = async (event) => {
+        if (typeof event.data === 'string') {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'status') {
+                setStatus(msg.message);
+            } else if (msg.type === 'transcript') {
+                addToConversation(msg.text, msg.reply);
+                initMediaSource();
+                isReceivingAudio = true;
+            } else if (msg.type === 'stop_audio') {
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.src = '';
+                }
+                isReceivingAudio = false;
+            }
+        } else {
+            if (isReceivingAudio && sourceBuffer && !sourceBuffer.updating) {
+                try {
+                    sourceBuffer.appendBuffer(new Uint8Array(event.data));
+                } catch (e) {
+                    console.error("appendBuffer error", e);
+                }
+            }
+        }
+    };
+
+    ws.onclose = () => {
+        setStatus("Disconnected");
+        started = false;
+    };
+
+    ws.onerror = (e) => {
+        console.error("WebSocket error", e);
+        setStatus("Error");
+    };
+}
+
+startBtn.onclick = startConversation;
+</script>
+</body>
+</html>

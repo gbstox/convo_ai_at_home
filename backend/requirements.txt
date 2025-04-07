@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+openai-whisper
+pydub
+python-multipart
+requests
+openai
+websockets
+webrtcvad
+pyannote.audio
+torch

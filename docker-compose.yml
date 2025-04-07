@@ -1,0 +1,35 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+    restart: unless-stopped
+    command: serve
+
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: kokoro
+    ports:
+      - "8880:8880"
+    restart: unless-stopped
+
+  app:
+    build: ./backend
+    container_name: backend
+    depends_on:
+      - ollama
+      - kokoro
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:1b}
+    ports:
+      - "8010:8010"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
