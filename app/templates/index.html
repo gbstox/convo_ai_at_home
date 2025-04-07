@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Local Conversational AI</title>
+</head>
+<body>
+  <h1>Talk to the AI</h1>
+  <button id="recordBtn">Record</button>
+  <button id="stopBtn" disabled>Stop</button>
+  <p id="status"></p>
+  <audio id="responseAudio" controls></audio>
+
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let recording = false;
+    const recordBtn = document.getElementById("recordBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusElem = document.getElementById("status");
+    const responseAudio = document.getElementById("responseAudio");
+
+    recordBtn.addEventListener("click", async () => {
+      if (recording) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+        recording = true;
+        audioChunks = [];
+        statusElem.innerText = "Recording...";
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        mediaRecorder.addEventListener("dataavailable", event => {
+          audioChunks.push(event.data);
+        });
+
+        mediaRecorder.addEventListener("stop", () => {
+          const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+          sendAudio(audioBlob);
+          stream.getTracks().forEach(track => track.stop());
+          recording = false;
+          recordBtn.disabled = false;
+          stopBtn.disabled = true;
+          statusElem.innerText = "";
+        });
+      } catch (err) {
+        console.error("Error accessing microphone: ", err);
+        statusElem.innerText = "Microphone access denied.";
+      }
+    });
+
+    stopBtn.addEventListener("click", () => {
+      if (mediaRecorder && recording) {
+        mediaRecorder.stop();
+        statusElem.innerText = "Processing audio...";
+      }
+    });
+
+    async function sendAudio(audioBlob) {
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.wav");
+      try {
+        const response = await fetch("/process", {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          statusElem.innerText = "Error: " + errorData.detail;
+          return;
+        }
+        const data = await response.json();
+        console.log("Transcript:", data.transcript);
+        console.log("Response text:", data.response_text);
+        const audioData = data.audio;
+        const audioSrc = "data:audio/wav;base64," + audioData;
+        responseAudio.src = audioSrc;
+        responseAudio.play();
+      } catch (err) {
+        console.error("Error sending audio: ", err);
+        statusElem.innerText = "Error processing audio.";
+      }
+    }
+  </script>
+</body>
+</html>

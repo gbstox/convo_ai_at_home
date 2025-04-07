@@ -10,6 +10,14 @@ services:
       - OLLAMA_MODELS=/root/.ollama/models
     restart: unless-stopped
     command: serve
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
   kokoro:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
@@ -30,6 +38,14 @@ services:
     ports:
       - "8010:8010"
     restart: unless-stopped
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
 volumes:
   ollama_data:

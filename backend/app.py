@@ -18,7 +18,8 @@ from pyannote.audio.pipelines import VoiceActivityDetection
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-model = whisper.load_model("base")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = whisper.load_model("base", device=device)
 
 # --------- Set your Ollama model here ---------
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:12b")
@@ -40,8 +41,8 @@ segmentation_model = Model.from_pretrained(
 )
 vad_pipeline = VoiceActivityDetection(segmentation=segmentation_model)
 vad_pipeline.instantiate({
-    "min_duration_on": 0.3,
-    "min_duration_off": 0.2
+    "min_duration_on": 0.2,
+    "min_duration_off": 0.1
 })
 
 # --------- Ollama model auto-pull logic ---------
@@ -101,7 +102,7 @@ async def websocket_endpoint(websocket: WebSocket):
     silence_threshold = 0.3
 
     speech_counter = 0
-    speech_confirm_threshold = 2
+    speech_confirm_threshold = 4
 
     async def send_status(msg):
         try:
