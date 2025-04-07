@@ -19,7 +19,8 @@ This project provides a real-time voice chat interface powered by:
 
 ```bash
 # Download the docker-compose file
-curl -O https://raw.githubusercontent.com/gbstox/convo_ai_at_home/main/docker-compose.yml
+git clone https://github.com/gbstox/convo_ai_at_home.git
+
 
 # Create a .env file with your Hugging Face token
 echo "HF_TOKEN=your_huggingface_token_here" > .env
